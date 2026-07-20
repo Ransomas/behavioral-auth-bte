@@ -2,29 +2,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-import torch
 import numpy as np
+import onnxruntime as ort
 import os
-from api.model import BehavioralTransformerEncoder
 
 app = FastAPI(title="Keystroke Authentication API")
 
-# ── Load model ────────────────────────────────────────────────────────────────
-device = torch.device("cpu")
-model  = BehavioralTransformerEncoder(
-    input_size=3, d_model=64, nhead=4,
-    num_layers=3, dim_feedforward=256,
-    dropout=0.1, num_classes=51
-).to(device)
-
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "bte_best.pt")
-model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-model.eval()
+# ── Load ONNX model ───────────────────────────────────────────────────────────
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "bte_model.onnx")
+session    = ort.InferenceSession(MODEL_PATH)
 
 # ── Load normalization parameters ─────────────────────────────────────────────
-DATA_DIR   = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
-FEAT_MEAN  = np.load(os.path.join(DATA_DIR, "feature_mean.npy"))
-FEAT_STD   = np.load(os.path.join(DATA_DIR, "feature_std.npy"))
+DATA_DIR  = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
+FEAT_MEAN = np.load(os.path.join(DATA_DIR, "feature_mean.npy"))
+FEAT_STD  = np.load(os.path.join(DATA_DIR, "feature_std.npy"))
 
 # ── Known subjects ────────────────────────────────────────────────────────────
 SUBJECTS = [
@@ -37,31 +28,31 @@ SUBJECTS = [
 
 # ── Request / Response models ─────────────────────────────────────────────────
 class KeystrokeSequence(BaseModel):
-    hold_times:    list[float]
-    dd_times:      list[float]
-    ud_times:      list[float]
+    hold_times: list[float]
+    dd_times:   list[float]
+    ud_times:   list[float]
 
 class AuthRequest(BaseModel):
-    subject_id:  str
-    sequence:    KeystrokeSequence
+    subject_id: str
+    sequence:   KeystrokeSequence
 
 class AuthResponse(BaseModel):
-    subject_id:   str
-    decision:     str
-    confidence:   float
-    threshold:    float
-    score:        float
+    subject_id:  str
+    decision:    str
+    confidence:  float
+    threshold:   float
+    score:       float
 
-# ── Helper: preprocess raw timing into normalized (11,3) tensor ───────────────
-def preprocess(seq: KeystrokeSequence) -> torch.Tensor:
-    h  = seq.hold_times[:10]  + [seq.hold_times[-1] if len(seq.hold_times) > 10 else 0.0]
-    dd = seq.dd_times[:10]    + [0.0]
-    ud = seq.ud_times[:10]    + [0.0]
+# ── Helper: preprocess raw timing into normalized (1, 11, 3) array ────────────
+def preprocess(seq: KeystrokeSequence) -> np.ndarray:
+    h  = list(seq.hold_times[:10]) + [seq.hold_times[-1] if len(seq.hold_times) > 10 else 0.0]
+    dd = list(seq.dd_times[:10])   + [0.0]
+    ud = list(seq.ud_times[:10])   + [0.0]
 
     arr = np.array([[h[i], dd[i], ud[i]] for i in range(11)], dtype=np.float32)
     arr = np.clip(arr, None, 2.0)
     arr = (arr - FEAT_MEAN.squeeze()) / (FEAT_STD.squeeze() + 1e-8)
-    return torch.tensor(arr, dtype=torch.float32).unsqueeze(0)
+    return arr.reshape(1, 11, 3)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
@@ -72,7 +63,7 @@ async def serve_frontend():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": "BTE", "subjects": len(SUBJECTS)}
+    return {"status": "ok", "model": "BTE-ONNX", "subjects": len(SUBJECTS)}
 
 @app.get("/subjects")
 async def list_subjects():
@@ -83,21 +74,21 @@ async def authenticate(request: AuthRequest):
     if request.subject_id not in SUBJECTS:
         raise HTTPException(
             status_code=404,
-            detail=f"Subject {request.subject_id} not found. "
-                   f"Valid subjects: {SUBJECTS}"
+            detail=f"Subject {request.subject_id} not found."
         )
 
     subject_idx = SUBJECTS.index(request.subject_id)
-    tensor      = preprocess(request.sequence).to(device)
+    arr         = preprocess(request.sequence)
 
-    with torch.no_grad():
-        logits = model(tensor)
-        probs  = torch.softmax(logits, dim=1)
-        score  = probs[0, subject_idx].item()
+    logits = session.run(["output"], {"input": arr})[0]
 
-    # Threshold calibrated to EER operating point
-    THRESHOLD = 0.0054
-    decision  = "ACCEPTED" if score >= THRESHOLD else "REJECTED"
+    # Softmax
+    exp_logits = np.exp(logits - logits.max())
+    probs      = exp_logits / exp_logits.sum()
+    score      = float(probs[0, subject_idx])
+
+    THRESHOLD  = 0.0054
+    decision   = "ACCEPTED" if score >= THRESHOLD else "REJECTED"
     confidence = score if decision == "ACCEPTED" else 1.0 - score
 
     return AuthResponse(
@@ -109,5 +100,7 @@ async def authenticate(request: AuthRequest):
     )
 
 # ── Mount static files ────────────────────────────────────────────────────────
-app.mount("/static", StaticFiles(directory=os.path.join(
-    os.path.dirname(__file__), "static")), name="static")
+app.mount("/static", StaticFiles(
+    directory=os.path.join(os.path.dirname(__file__), "static")),
+    name="static"
+)
