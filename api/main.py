@@ -13,9 +13,9 @@ MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "models", "bte_model.
 session    = ort.InferenceSession(MODEL_PATH)
 
 # ── Load normalization parameters ─────────────────────────────────────────────
-DATA_DIR  = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
-FEAT_MEAN = np.load(os.path.join(DATA_DIR, "feature_mean.npy"))
-FEAT_STD  = np.load(os.path.join(DATA_DIR, "feature_std.npy"))
+API_DIR   = os.path.dirname(__file__)
+FEAT_MEAN = np.load(os.path.join(API_DIR, "feature_mean.npy"))
+FEAT_STD  = np.load(os.path.join(API_DIR, "feature_std.npy"))
 
 # ── Known subjects ────────────────────────────────────────────────────────────
 SUBJECTS = [
