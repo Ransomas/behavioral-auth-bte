@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Keystroke Authentication Demo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #0f1117;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .card {
+            background: #1a1d27;
+            border: 1px solid #2a2d3e;
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-bottom: 32px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            color: #9ca3af;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        select,
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0f1117;
+            border: 1px solid #2a2d3e;
+            border-radius: 10px;
+            color: #e0e0e0;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        select:focus,
+        input[type="password"]:focus {
+            border-color: #6366f1;
+        }
+
+        .password-hint {
+            font-size: 0.8rem;
+            color: #4b5563;
+            margin-top: -14px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #6366f1;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #4f46e5;
+        }
+
+        button:disabled {
+            background: #374151;
+            cursor: not-allowed;
+        }
+
+        .result {
+            margin-top: 28px;
+            padding: 20px;
+            border-radius: 12px;
+            display: none;
+        }
+
+        .result.accepted {
+            background: #052e16;
+            border: 1px solid #16a34a;
+        }
+
+        .result.rejected {
+            background: #2d0a0a;
+            border: 1px solid #dc2626;
+        }
+
+        .result.error {
+            background: #1c1000;
+            border: 1px solid #d97706;
+        }
+
+        .decision {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .accepted .decision {
+            color: #4ade80;
+        }
+
+        .rejected .decision {
+            color: #f87171;
+        }
+
+        .error .decision {
+            color: #fbbf24;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .metric {
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 8px;
+            padding: 10px 14px;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-bottom: 2px;
+        }
+
+        .metric-value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+
+        .instructions {
+            background: #111827;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 24px;
+            font-size: 0.85rem;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+
+        .instructions strong {
+            color: #9ca3af;
+        }
+
+        .progress {
+            height: 4px;
+            background: #1f2937;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #6366f1;
+            border-radius: 4px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+
+        footer {
+            margin-top: 24px;
+            font-size: 0.75rem;
+            color: #374151;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="card">
+        <h1>Keystroke Authentication</h1>
+        <p class="subtitle">Behavioral biometric authentication powered by a Transformer encoder</p>
+
+        <div class="instructions">
+            <strong>How it works:</strong> Select a subject ID, then type the password below.
+            The system captures your keystroke timing patterns and authenticates you using
+            a trained Behavioral Transformer Encoder (BTE). Type naturally — do not pause mid-password.
+        </div>
+
+        <label for="subject">Subject ID</label>
+        <select id="subject"></select>
+
+        <label for="password">Type the password: <strong style="color:#6366f1">.tie5Roanl</strong></label>
+        <input type="password" id="password" placeholder="Type here..." autocomplete="off" />
+        <p class="password-hint">Type the password exactly as shown above. Press Enter or click Authenticate when done.
+        </p>
+
+        <div class="progress">
+            <div class="progress-bar" id="progress"></div>
+        </div>
+
+        <button id="authBtn" onclick="authenticate()" disabled>
+            Type the password to authenticate
+        </button>
+
+        <div class="result" id="result">
+            <div class="decision" id="decision"></div>
+            <div id="resultMsg"></div>
+            <div class="metrics" id="metrics"></div>
+        </div>
+    </div>
+
+    <footer>
+        BTE Keystroke Authentication Demo &nbsp;|&nbsp;
+        Western Illinois University &nbsp;|&nbsp;
+        github.com/Ransomas/behavioral-auth-bte
+    </footer>
+
+    <script>
+        const TARGET_PASSWORD = ".tie5Roanl";
+        let keyEvents = [];
+        let keyDownTimes = {};
+
+        // Populate subject dropdown
+        fetch('/subjects')
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('subject');
+                data.subjects.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = opt.textContent = s;
+                    sel.appendChild(opt);
+                });
+            });
+
+        // Keystroke capture
+        const pwdInput = document.getElementById('password');
+
+        pwdInput.addEventListener('keydown', e => {
+            keyDownTimes[e.key] = performance.now();
+        });
+
+        pwdInput.addEventListener('keyup', e => {
+            if (!keyDownTimes[e.key]) return;
+            const holdTime = (performance.now() - keyDownTimes[e.key]) / 1000;
+            keyEvents.push({ key: e.key, holdTime, time: keyDownTimes[e.key] });
+            delete keyDownTimes[e.key];
+
+            // Update progress bar
+            const typed = pwdInput.value;
+            const progress = Math.min((typed.length / TARGET_PASSWORD.length) * 100, 100);
+            document.getElementById('progress').style.width = progress + '%';
+
+            // Enable button when full password typed
+            const btn = document.getElementById('authBtn');
+            if (typed.length >= TARGET_PASSWORD.length) {
+                btn.disabled = false;
+                btn.textContent = 'Authenticate';
+            }
+
+            // Auto-submit on Enter
+            if (e.key === 'Enter') authenticate();
+        });
+
+        function buildSequence() {
+            // Extract timing features from captured keystrokes
+            const holdTimes = keyEvents.map(e => e.holdTime);
+            const ddTimes = [];
+            const udTimes = [];
+
+            for (let i = 1; i < keyEvents.length; i++) {
+                const dd = (keyEvents[i].time - keyEvents[i - 1].time) / 1000;
+                const ud = dd - keyEvents[i - 1].holdTime;
+                ddTimes.push(dd);
+                udTimes.push(ud);
+            }
+
+            // Pad to 10 transitions
+            while (holdTimes.length < 11) holdTimes.push(0.1);
+            while (ddTimes.length < 10) ddTimes.push(0.15);
+            while (udTimes.length < 10) udTimes.push(0.05);
+
+            return { hold_times: holdTimes, dd_times: ddTimes, ud_times: udTimes };
+        }
+
+        async function authenticate() {
+            const subjectId = document.getElementById('subject').value;
+            const btn = document.getElementById('authBtn');
+            const resultDiv = document.getElementById('result');
+
+            btn.disabled = true;
+            btn.textContent = 'Authenticating...';
+            resultDiv.style.display = 'none';
+
+            try {
+                const sequence = buildSequence();
+                const response = await fetch('/authenticate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subject_id: subjectId, sequence })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showError(data.detail || 'Authentication failed');
+                    return;
+                }
+
+                showResult(data);
+
+            } catch (err) {
+                showError('Connection error. Please try again.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Authenticate Again';
+                keyEvents = [];
+                pwdInput.value = '';
+                document.getElementById('progress').style.width = '0%';
+            }
+        }
+
+        function showResult(data) {
+            const resultDiv = document.getElementById('result');
+            const isAccepted = data.decision === 'ACCEPTED';
+
+            resultDiv.className = 'result ' + (isAccepted ? 'accepted' : 'rejected');
+            resultDiv.style.display = 'block';
+
+            document.getElementById('decision').textContent =
+                isAccepted ? '✓ Identity Verified' : '✗ Identity Rejected';
+
+            document.getElementById('resultMsg').textContent =
+                isAccepted
+                    ? `The system accepted this typing pattern as subject ${data.subject_id}.`
+                    : `The system rejected this typing pattern for subject ${data.subject_id}.`;
+
+            document.getElementById('metrics').innerHTML = `
+      <div class="metric">
+        <div class="metric-label">Authentication Score</div>
+        <div class="metric-value">${data.score}</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Confidence</div>
+        <div class="metric-value">${data.confidence}%</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Threshold</div>
+        <div class="metric-value">${data.threshold}</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Decision</div>
+        <div class="metric-value">${data.decision}</div>
+      </div>
+    `;
+        }
+
+        function showError(msg) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = 'result error';
+            resultDiv.style.display = 'block';
+            document.getElementById('decision').textContent = '⚠ Error';
+            document.getElementById('resultMsg').textContent = msg;
+            document.getElementById('metrics').innerHTML = '';
+        }
+    </script>
+
+</body>
+
+</html>
